@@ -1,0 +1,702 @@
+<!-- <!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Create a heatmap layer</title>
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <link
+      href="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css"
+      rel="stylesheet"
+    />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+      import {
+        getFirestore,
+        doc,
+        getDoc,
+        getDocs,
+        query,
+        onSnapshot,
+        collection,
+        addDoc,
+      } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyDHoEO_aAbu0p9wf_Zm4YQyasfSwArG0IE",
+        authDomain: "brixxsmapbox.firebaseapp.com",
+        projectId: "brixxsmapbox",
+        storageBucket: "brixxsmapbox.appspot.com",
+        messagingSenderId: "685690638308",
+        appId: "1:685690638308:web:08db62e4cbcd5fe08f01f1",
+        measurementId: "G-3F81LN7TR9",
+      };
+      mapboxgl.accessToken =
+        "pk.eyJ1IjoiZGV2ZWxvcG1lbnQxIiwiYSI6ImNreDduNGZiNDA4M2cyb3FjaHdkMzRmOTAifQ.rmaNEeyqCmavn7PbFTSzmw";
+      const map = new mapboxgl.Map({
+        container: "map",
+        style: "mapbox://styles/mapbox/dark-v10",
+        center: [-120, 50],
+        zoom: 9,
+      });
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore();
+      const userNameList = [];
+      const userNameListSubCollection = [];
+      var listofuser;
+      var counter = 0;
+      const docsSnap = await getDocs(collection(db, "collection"));
+
+      docsSnap.forEach((doc) => {
+        console.log(doc.data()["userName"]);
+        userNameList[counter] = doc.data()["userName"];
+        userNameListSubCollection[counter] = doc.data()["userName"] + "123";
+        counter = counter + 1;
+        // "doc1", "doc2" and "doc3"
+      });
+
+      console.log(userNameList);
+      console.log(userNameListSubCollection);
+      var latitude;
+      var longitude;
+
+      var docsSnapFullData = [];
+      var iterator = userNameList.values();
+      counter = 0;
+
+      const docsSnap2 = await getDocs(
+        collection(
+          db,
+          `collection/${userNameList[0]}/${userNameListSubCollection[0]}`
+        )
+      );
+
+      docsSnap2.forEach((doc) => {
+        docsSnapFullData[counter] = doc.data();
+        counter = counter + 1;
+      });
+
+      var geojson = {
+        type: "FeatureCollection",
+        features: [],
+      };
+      for (let i = 0; i < docsSnapFullData.length; i++) {
+        geojson.features.push({
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: [docsSnapFullData[i].long, docsSnapFullData[i].lat],
+          },
+        });
+      }
+
+      console.log("--------------GEJOSN-------");
+      console.log(geojson);
+
+      map.on("load", async () => {
+        // Add a geojson point source.
+        // Heatmap layers also work with a vector tile source.
+        // const updateSource = setInterval(async () => {
+        //   const geojson = await getLocation(updateSource);
+        //   map.getSource("iss").setData(geojson);
+        // }, 2000);
+        const geojson = await getLocation();
+        map.flyTo({
+          center: [75.857729, 22.719618],
+          speed: 0.5,
+        });
+        map.addSource("earthquakes", {
+          type: "geojson",
+          data:
+            //   geojson,
+            "https://docs.mapbox.com/mapbox-gl-js/assets/earthquakes.geojson",
+        });
+
+        map.addLayer(
+          {
+            id: "earthquakes-heat",
+            type: "heatmap",
+            source: "earthquakes",
+            maxzoom: 9,
+            paint: {
+              // Increase the heatmap weight based on frequency and property magnitude
+              "heatmap-weight": [
+                "interpolate",
+                ["linear"],
+                ["get", "mag"],
+                0,
+                0,
+                6,
+                1,
+              ],
+              // Increase the heatmap color weight weight by zoom level
+              // heatmap-intensity is a multiplier on top of heatmap-weight
+              "heatmap-intensity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                0,
+                1,
+                9,
+                3,
+              ],
+              // Color ramp for heatmap.  Domain is 0 (low) to 1 (high).
+              // Begin color ramp at 0-stop with a 0-transparancy color
+              // to create a blur-like effect.
+              "heatmap-color": [
+                "interpolate",
+                ["linear"],
+                ["heatmap-density"],
+                0,
+                "rgba(33,102,172,0)",
+                0.2,
+                "rgb(103,169,207)",
+                0.4,
+                "rgb(209,229,240)",
+                0.6,
+                "rgb(253,219,199)",
+                0.8,
+                "rgb(239,138,98)",
+                1,
+                "rgb(178,24,43)",
+              ],
+              // Adjust the heatmap radius by zoom level
+              "heatmap-radius": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                0,
+                2,
+                9,
+                20,
+              ],
+              // Transition from heatmap to circle layer by zoom level
+              "heatmap-opacity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                7,
+                1,
+                9,
+                0,
+              ],
+            },
+          },
+          "waterway-label"
+        );
+
+        async function getLocation(updateSource) {
+          // Make a GET request to the API and return the location of the ISS.
+          //   try {
+          // const response = await fetch(
+          // 'https://api.wheretheiss.at/v1/satellites/25544',
+          // { method: 'GET' }
+          // );
+          // const { latitude, longitude } = await response.json();
+          // Fly the map to the location.
+          const docsSnap = await getDocs(collection(db, "collection"));
+
+          docsSnap.forEach((doc) => {
+            console.log(doc.data()["userName"]);
+            userNameList[counter] = doc.data()["userName"];
+            userNameListSubCollection[counter] = doc.data()["userName"] + "123";
+            counter = counter + 1;
+            // "doc1", "doc2" and "doc3"
+          });
+
+          console.log(userNameList);
+          console.log(userNameListSubCollection);
+          var latitude;
+          var longitude;
+          var docsSnap2List = [];
+          var docsSnapFullData = [];
+          var geojson = {
+            type: "FeatureCollection",
+            features: [],
+          };
+          var iterator = userNameList.values();
+          counter = 0;
+          for (let elements of iterator) {
+            docsSnap2List[counter] = await getDocs(
+              collection(
+                db,
+                `collection/${userNameList[counter]}/${userNameListSubCollection[counter]}`
+              )
+            );
+
+            docsSnap2List[counter].forEach((doc) => {
+              docsSnapFullData[counter] = doc.data();
+              // "doc1", "doc2" and "doc3"
+            });
+            counter = counter + 1;
+          }
+          jsonString = gson.toJson(docsSnapFullData);
+          console.log(docsSnapFullData);
+          userLocationData = [];
+          //   for (let i = 0; i < docsSnapFullData.length; i++) {
+          //     userLocationData.add({
+          //       coordinates: docsSnapFullData[i].latitude,
+          //     });
+          //   }
+
+          //   docsSnap2.forEach((doc) => {
+          //     longitude = doc.data()["long"];
+          //     latitude = doc.data()["lat"];
+          //     // console.log(doc.data()["long"]);
+          //     // console.log(doc.data()["lat"]);
+          //   });
+          //   console.log("--------------");
+          //   console.log(latitude + longitude);
+          //   map.flyTo({
+          //     center: [longitude, latitude],
+          //     speed: 0.5,
+          //   });
+          // Return the location of the ISS as GeoJSON.
+          var geojson = {
+            type: "FeatureCollection",
+            features: [],
+          };
+
+          for (let i = 0; i < docsSnapFullData.length; i++) {
+            geojson.features.push({
+              type: "Feature",
+              geometry: {
+                type: "Point",
+                coordinates: [
+                  docsSnapFullData[i].long,
+                  docsSnapFullData[i].lat,
+                ],
+              },
+            });
+          }
+
+          console.log("--------------GEJOSN-------");
+          console.log(geojson);
+
+          return {
+            type: "FeatureCollection",
+            features: [
+              {
+                type: "Feature",
+                geometry: {
+                  type: "Point",
+                  coordinates: [longitude, latitude],
+                },
+              },
+            ],
+          };
+          //   } catch (err) {
+          //     // If the updateSource interval is defined, clear the interval to stop updating the source.
+          //     if (updateSource) clearInterval(updateSource);
+          //     throw new Error(err);
+          //   }
+        }
+      });
+    </script>
+  </body>
+</html> -->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Create a heatmap layer</title>
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <link
+      href="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.css"
+      rel="stylesheet"
+    />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.6.1/mapbox-gl.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+      #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+      import {
+        getFirestore,
+        doc,
+        getDoc,
+        getDocs,
+        query,
+        onSnapshot,
+        collection,
+        addDoc,
+      } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyDHoEO_aAbu0p9wf_Zm4YQyasfSwArG0IE",
+        authDomain: "brixxsmapbox.firebaseapp.com",
+        projectId: "brixxsmapbox",
+        storageBucket: "brixxsmapbox.appspot.com",
+        messagingSenderId: "685690638308",
+        appId: "1:685690638308:web:08db62e4cbcd5fe08f01f1",
+        measurementId: "G-3F81LN7TR9",
+      };
+      mapboxgl.accessToken =
+        "pk.eyJ1IjoiZGV2ZWxvcG1lbnQxIiwiYSI6ImNreDduNGZiNDA4M2cyb3FjaHdkMzRmOTAifQ.rmaNEeyqCmavn7PbFTSzmw";
+      const map = new mapboxgl.Map({
+        container: "map",
+        style: "mapbox://styles/mapbox/dark-v10",
+        center: [-120, 50],
+        zoom: 2,
+      });
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore();
+      const userNameList = [];
+      const userNameListSubCollection = [];
+      var listofuser;
+      var counter = 0;
+
+      map.on("load", async () => {
+        // Add a geojson point source.
+        // Heatmap layers also work with a vector tile source.
+        var docsSnapFullData = [];
+        counter = 0;
+        var latitude;
+        var longitude;
+
+        const docsSnap = await getDocs(collection(db, "collection"));
+        docsSnap.forEach((doc) => {
+          console.log(doc.data()["userName"]);
+          userNameList[counter] = doc.data()["userName"];
+          userNameListSubCollection[counter] = doc.data()["userName"] + "123";
+          counter = counter + 1;
+          // "doc1", "doc2" and "doc3"
+        });
+
+        counter = 0;
+
+        const docsSnap2 = await getDocs(
+          collection(
+            db,
+            `collection/${userNameList[0]}/${userNameListSubCollection[0]}`
+          )
+        );
+
+        docsSnap2.forEach((doc) => {
+          docsSnapFullData[counter] = doc.data();
+          counter = counter + 1;
+        });
+
+        var geojson = {
+          type: "FeatureCollection",
+          features: [],
+        };
+        for (let i = 0; i < docsSnapFullData.length; i++) {
+          geojson.features.push({
+            type: "Feature",
+            geometry: {
+              type: "Point",
+              coordinates: [docsSnapFullData[i].long, docsSnapFullData[i].lat],
+            },
+          });
+        }
+        map.addSource("earthquakes", {
+          type: "geojson",
+          data: geojson,
+          // "https://docs.mapbox.com/mapbox-gl-js/assets/earthquakes.geojson",
+        });
+        map.addLayer(
+          {
+            id: "earthquakes-heat",
+            type: "heatmap",
+            source: "earthquakes",
+            maxzoom: 9,
+            paint: {
+              // Increase the heatmap weight based on frequency and property magnitude
+              "heatmap-weight": [
+                "interpolate",
+                ["linear"],
+                ["get", "mag"],
+                0,
+                0,
+                6,
+                1,
+              ],
+              // Increase the heatmap color weight weight by zoom level
+              // heatmap-intensity is a multiplier on top of heatmap-weight
+              "heatmap-intensity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                0,
+                1,
+                9,
+                3,
+              ],
+              // Color ramp for heatmap.  Domain is 0 (low) to 1 (high).
+              // Begin color ramp at 0-stop with a 0-transparancy color
+              // to create a blur-like effect.
+              "heatmap-color": [
+                "interpolate",
+                ["linear"],
+                ["heatmap-density"],
+                0,
+                "rgba(33,102,172,0)",
+                0.2,
+                "rgb(103,169,207)",
+                0.4,
+                "rgb(209,229,240)",
+                0.6,
+                "rgb(253,219,199)",
+                0.8,
+                "rgb(239,138,98)",
+                1,
+                "rgb(178,24,43)",
+              ],
+              // Adjust the heatmap radius by zoom level
+              "heatmap-radius": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                0,
+                2,
+                9,
+                40,
+              ],
+              // Transition from heatmap to circle layer by zoom level
+              "heatmap-opacity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                7,
+                1,
+                9,
+                0,
+              ],
+            },
+          },
+          "waterway-label"
+        );
+
+        map.addLayer(
+          {
+            id: "earthquakes-point",
+            type: "circle",
+            source: "earthquakes",
+            minzoom: 7,
+            paint: {
+              // Size circle radius by earthquake magnitude and zoom level
+              "circle-radius": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                7,
+                ["interpolate", ["linear"], ["get", "mag"], 1, 1, 6, 4],
+                16,
+                ["interpolate", ["linear"], ["get", "mag"], 1, 5, 6, 50],
+              ],
+              // Color circle by earthquake magnitude
+              "circle-color": [
+                "interpolate",
+                ["linear"],
+                ["get", "mag"],
+                1,
+                "rgb(178,24,43)",
+                2,
+                "rgb(178,24,43)",
+                3,
+                "rgb(178,24,43)",
+                4,
+                "rgb(253,219,199)",
+                5,
+                "rgb(239,138,98)",
+                6,
+                "rgb(178,24,43)",
+              ],
+              "circle-stroke-color": "red",
+              "circle-stroke-width": 1,
+              // Transition from heatmap to circle layer by zoom level
+              "circle-opacity": [
+                "interpolate",
+                ["linear"],
+                ["zoom"],
+                7,
+                0,
+                8,
+                1,
+              ],
+            },
+          },
+          "waterway-label"
+        );
+        // map.addLayer(
+        //   {
+        //     id: "earthquakes-heat",
+        //     type: "heatmap",
+        //     source: "earthquakes",
+        //     maxzoom: 9,
+        //     paint: {
+        //       // Increase the heatmap weight based on frequency and property magnitude
+        //       "heatmap-weight": [
+        //         "interpolate",
+        //         ["linear"],
+        //         ["get", "mag"],
+        //         0,
+        //         0,
+        //         6,
+        //         1,
+        //       ],
+        //       // Increase the heatmap color weight weight by zoom level
+        //       // heatmap-intensity is a multiplier on top of heatmap-weight
+        //       "heatmap-intensity": [
+        //         "interpolate",
+        //         ["linear"],
+        //         ["zoom"],
+        //         0,
+        //         1,
+        //         9,
+        //         3,
+        //       ],
+        //       // Color ramp for heatmap.  Domain is 0 (low) to 1 (high).
+        //       // Begin color ramp at 0-stop with a 0-transparancy color
+        //       // to create a blur-like effect.
+        //       "heatmap-color": [
+        //         "interpolate",
+        //         ["linear"],
+        //         ["heatmap-density"],
+        //         0,
+        //         "rgba(0, 0, 255, 0)",
+        //         0.1,
+        //         "#ffffb2",
+        //         0.3,
+        //         "#feb24c",
+        //         0.5,
+        //         "#fd8d3c",
+        //         0.7,
+        //         "#fc4e2a",
+        //         1,
+        //         "#e31a1c",
+        //       ],
+        //       // "heatmap-color": [
+        //       //   "interpolate",
+        //       //   ["linear"],
+        //       //   ["heatmap-density"],
+        //       //   0,
+        //       //   "rgba(33,102,172,0)",
+        //       //   0.2,
+        //       //   "rgb(103,169,207)",
+        //       //   0.4,
+        //       //   "rgb(209,229,240)",
+        //       //   0.6,
+        //       //   "rgb(253,219,199)",
+        //       //   0.8,
+        //       //   "rgb(239,138,98)",
+        //       //   1,
+        //       //   "rgb(178,24,43)",
+        //       // ],
+        //       // Adjust the heatmap radius by zoom level
+        //       "heatmap-radius": [
+        //         "interpolate",
+        //         ["linear"],
+        //         ["zoom"],
+        //         0,
+        //         2,
+        //         9,
+        //         20,
+        //       ],
+        //       // Transition from heatmap to circle layer by zoom level
+        //       "heatmap-opacity": [
+        //         "interpolate",
+        //         ["linear"],
+        //         ["zoom"],
+        //         7,
+        //         1,
+        //         9,
+        //         0,
+        //       ],
+        //     },
+        //   },
+        //   "waterway-label"
+        // );
+
+        // map.addLayer(
+        //   {
+        //     id: "earthquakes-point",
+        //     type: "circle",
+        //     source: "earthquakes",
+        //     minzoom: 7,
+        //     paint: {
+        //       // Size circle radius by earthquake magnitude and zoom level
+        //       "circle-radius": [
+        //         "interpolate",
+        //         ["linear"],
+        //         ["zoom"],
+        //         7,
+        //         ["interpolate", ["linear"], ["get", "mag"], 1, 1, 6, 4],
+        //         16,
+        //         ["interpolate", ["linear"], ["get", "mag"], 1, 5, 6, 50],
+        //       ],
+        //       // Color circle by earthquake magnitude
+        //       "circle-color": [
+        //         "interpolate",
+        //         ["linear"],
+        //         ["get", "mag"],
+        //         1,
+        //         'rgb(178,24,43)',
+        //         2,
+        //         'rgb(178,24,43)',
+        //         3,
+        //         'rgb(178,24,43)',
+        //         4,
+        //         'rgb(178,24,43)',
+        //         5,
+        //         'rgb(178,24,43)',
+        //         6,
+        //         'rgb(178,24,43)',
+        //       ],
+        //       "circle-stroke-color": "white",
+        //       "circle-stroke-width": 1,
+        //       // Transition from heatmap to circle layer by zoom level
+        //       "circle-opacity": [
+        //         "interpolate",
+        //         ["linear"],
+        //         ["zoom"],
+        //         7,
+        //         0,
+        //         8,
+        //         1,
+        //       ],
+        //     },
+        //   },
+        //   "waterway-label"
+        // );
+      });
+    </script>
+  </body>
+</html>
